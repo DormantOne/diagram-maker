@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Interactive Force-Directed Graph with JSON Input</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <style>
+        .node circle {
+            fill: #fff;
+            stroke: steelblue;
+            stroke-width: 1.5px;
+        }
+
+        .node text {
+            font: 12px sans-serif;
+            pointer-events: none;
+        }
+
+        .link {
+            fill: none;
+            stroke: #999;
+            stroke-opacity: 0.6;
+            stroke-width: 1.5px;
+        }
+
+        .link.red {
+            stroke: red;
+        }
+
+        .link.arrowhead {
+            marker-end: url(#arrowhead);
+        }
+
+        .tooltip {
+            position: absolute;
+            text-align: center;
+            width: auto;
+            height: auto;
+            padding: 5px;
+            font: 12px sans-serif;
+            background: lightsteelblue;
+            border: 0px;
+            border-radius: 8px;
+            pointer-events: none;
+        }
+
+        .process-nub {
+            fill: red;
+            cursor: pointer;
+        }
+
+        .control-panel {
+            margin-bottom: 10px;
+        }
+
+        #json-input {
+            width: 100%;
+            height: 150px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="control-panel">
+        <textarea id="json-input" placeholder="Paste JSON data here..."></textarea>
+        <button id="render-graph">Render Graph</button>
+        <button id="use-example">Use Example</button>
+        <button id="increase-length">Increase Connection Length</button>
+        <button id="decrease-length">Decrease Connection Length</button>
+        <span id="length-factor-value">Connection Length Factor: 1.0</span>
+    </div>
+    <svg width="960" height="800"></svg>
+    <div class="tooltip" style="opacity: 0;"></div>
+    <script>
+        const exampleData = {
+            nodes: [
+                { id: "IL-1", description: "A significant pro-inflammatory cytokine, regulates various cellular processes." },
+                { id: "IL-6", description: "A dual-function cytokine with pro- and anti-inflammatory properties." },
+                { id: "TNF-α", description: "Regulates immune responses, inflammation, and tissue damage." },
+                { id: "IL-10", description: "An anti-inflammatory cytokine that inhibits pro-inflammatory cytokines." },
+                { id: "TGF-β", description: "A multifunctional cytokine with anti-inflammatory and profibrotic properties." },
+                { id: "IL-8", description: "A dual-function cytokine with pro- and anti-inflammatory effects." },
+                { id: "CCL4", description: "Chemotactic factor for immune cells, a biomarker for cytokine storms." },
+                { id: "CCL5", description: "Regulates immune cell migration, associated with sepsis severity." },
+                { id: "CXCL10", description: "Induces chemotaxis in various immune cells, reflects inflammatory milieu." }
+            ],
+            links: [
+                { source: "IL-1", target: "IL-6", process: "Signal Cascade" },
+                { source: "IL-1", target: "TNF-α", process: "Co-regulation" },
+                { source: "TNF-α", target: "IL-6", process: "Pro-inflammatory Response" },
+                { source: "IL-10", target: "IL-1", process: "Inhibition" },
+                { source: "IL-10", target: "IL-6", process: "Inhibition" },
+                { source: "IL-10", target: "TNF-α", process: "Inhibition" },
+                { source: "TGF-β", target: "IL-1", process: "Inhibition" },
+                { source: "TGF-β", target: "IL-6", process: "Inhibition" },
+                { source: "TGF-β", target: "TNF-α", process: "Inhibition" },
+                { source: "IL-8", target: "IL-1", process: "Pro-inflammatory Response" },
+                { source: "IL-8", target: "TNF-α", process: "Pro-inflammatory Response" },
+                { source: "IL-8", target: "IL-6", process: "Context-dependent Response" },
+                { source: "IL-1", target: "CCL4", process: "Chemotactic Signal" },
+                { source: "IL-1", target: "CCL5", process: "Chemotactic Signal" },
+                { source: "IL-1", target: "CXCL10", process: "Chemotactic Signal" },
+                { source: "TNF-α", target: "CCL4", process: "Chemotactic Signal" },
+                { source: "TNF-α", target: "CCL5", process: "Chemotactic Signal" },
+                { source: "TNF-α", target: "CXCL10", process: "Chemotactic Signal" },
+                { source: "IL-6", target: "CCL4", process: "Chemotactic Signal" },
+                { source: "IL-6", target: "CCL5", process: "Chemotactic Signal" },
+                { source: "IL-6", target: "CXCL10", process: "Chemotactic Signal" }
+            ],
+            gravity: {
+                "IL-1": { "IL-6": 0.3, "TNF-α": 0.3, "CCL4": 0.1, "CCL5": 0.1, "CXCL10": 0.1 },
+                "IL-6": { "IL-1": 0.3, "TNF-α": 0.3, "CCL4": 0.1, "CCL5": 0.1, "CXCL10": 0.1 },
+                "TNF-α": { "IL-1": 0.3, "IL-6": 0.3, "CCL4": 0.1, "CCL5": 0.1, "CXCL10": 0.1 },
+                "IL-10": { "IL-1": 0.4, "IL-6": 0.4, "TNF-α": 0.4 },
+                "TGF-β": { "IL-1": 0.4, "IL-6": 0.4, "TNF-α": 0.4 },
+                "IL-8": { "IL-1": 0.2, "TNF-α": 0.2, "IL-6": 0.2 },
+                "CCL4": { "IL-1": 0.1, "IL-6": 0.1, "TNF-α": 0.1 },
+                "CCL5": { "IL-1": 0.1, "IL-6": 0.1, "TNF-α": 0.1 },
+                "CXCL10": { "IL-1": 0.1, "IL-6": 0.1, "TNF-α": 0.1 }
+            }
+        };
+
+        document.getElementById("render-graph").addEventListener("click", function() {
+            const jsonData = document.getElementById("json-input").value;
+            try {
+                const data = JSON.parse(jsonData);
+                renderGraph(data);
+            } catch (error) {
+                alert("Invalid JSON data");
+            }
+        });
+
+        document.getElementById("use-example").addEventListener("click", function() {
+            document.getElementById("json-input").value = JSON.stringify(exampleData, null, 2);
+        });
+
+        let lengthFactor = 1.0;
+
+        document.getElementById("increase-length").addEventListener("click", function() {
+            lengthFactor += 0.1;
+            document.getElementById("length-factor-value").textContent = `Connection Length Factor: ${lengthFactor.toFixed(1)}`;
+            updateSimulation();
+        });
+
+        document.getElementById("decrease-length").addEventListener("click", function() {
+            if (lengthFactor > 0.1) {
+                lengthFactor -= 0.1;
+                document.getElementById("length-factor-value").textContent = `Connection Length Factor: ${lengthFactor.toFixed(1)}`;
+                updateSimulation();
+            }
+        });
+
+        function renderGraph(data) {
+            const width = 960;
+            const height = 800;
+
+            const svg = d3.select("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .html("");  // Clear previous graph
+
+            const tooltip = d3.select(".tooltip");
+
+            let gravityFactor = 0.01;  // Initial gravity factor
+
+            svg.append('defs').append('marker')
+                .attr('id', 'arrowhead')
+                .attr('viewBox', '-0 -5 10 10')
+                .attr('refX', 13)
+                .attr('refY', 0)
+                .attr('orient', 'auto')
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .attr('xoverflow', 'visible')
+                .append('svg:path')
+                .attr('d', 'M 0,-5 L 10 ,0 L 0,5')
+                .attr('fill', 'red')
+                .style('stroke', 'none');
+
+            const simulation = d3.forceSimulation(data.nodes)
+                .force("link", d3.forceLink(data.links).id(d => d.id).distance(d => 100 * lengthFactor))
+                .force("charge", d3.forceManyBody().strength(-30))  // Initial repulsive force
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("collision", d3.forceCollide().radius(20))
+                .alphaDecay(0.02)  // Slows down the cooling to allow for more expansion
+                .on("tick", ticked);
+
+            const link = svg.append("g")
+                .attr("class", "links")
+                .selectAll("line")
+                .data(data.links)
+                .enter().append("g");
+
+            const linkSource = link.append("line")
+                .attr("class", "link");
+
+            const linkTarget = link.append("line")
+                .attr("class", "link red arrowhead");
+
+            const linkNubs = svg.append("g")
+                .attr("class", "link-nubs")
+                .selectAll("circle")
+                .data(data.links)
+                .enter().append("circle")
+                .attr("class", "process-nub")
+                .attr("r", 5)
+                .on("click", function(event, d) {
+                    alert(`Process: ${d.process}`);
+                });
+
+            const node = svg.append("g")
+                .attr("class", "nodes")
+                .selectAll("g")
+                .data(data.nodes)
+                .enter().append("g")
+                .attr("class", "node")
+                .on("mouseover", function(event, d) {
+                    tooltip.transition()
+                        .duration(200)
+                        .style("opacity", .9);
+                    tooltip.html(`<strong>${d.id}</strong><br>${d.description}`)
+                        .style("left", (event.pageX + 5) + "px")
+                        .style("top", (event.pageY - 28) + "px");
+                })
+                .on("mouseout", function(d) {
+                    tooltip.transition()
+                        .duration(500)
+                        .style("opacity", 0);
+                });
+
+            node.append("circle")
+                .attr("r", 10)
+                .attr("fill", "#69b3a2");
+
+            node.append("text")
+                .attr("dy", -3)
+                .attr("x", 12)
+                .attr("text-anchor", "start")
+                .text(d => d.id);
+
+            function ticked() {
+                linkSource
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => (d.source.x + d.target.x) / 2)
+                    .attr("y2", d => (d.source.y + d.target.y) / 2);
+
+                linkTarget
+                    .attr("x1", d => (d.source.x + d.target.x) / 2)
+                    .attr("y1", d => (d.source.y + d.target.y) / 2)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+
+                linkNubs
+                    .attr("cx", d => (d.source.x + d.target.x) / 2)
+                    .attr("cy", d => (d.source.y + d.target.y) / 2);
+
+                node
+                    .attr("transform", d => `translate(${d.x},${d.y})`);
+
+                const centerX = width / 2;
+                const centerY = height / 2;
+
+                data.nodes.forEach(node => {
+                    data.nodes.forEach(otherNode => {
+                        if (node !== otherNode && data.gravity[node.id] && data.gravity[node.id][otherNode.id]) {
+                            const force = data.gravity[node.id][otherNode.id];
+                            const dx = otherNode.x - node.x;
+                            const dy = otherNode.y - node.y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+
+                            if (distance > 0) {
+                                const attractiveForce = force * gravityFactor / distance;
+                                node.vx += dx * attractiveForce;
+                                node.vy += dy * attractiveForce;
+                            }
+                        }
+                    });
+                });
+            }
+
+            let iterationCount = 0;
+            function anneal() {
+                iterationCount++;
+                if (iterationCount % 100 === 0 && gravityFactor < 1.0) {
+                    gravityFactor += 0.01;
+                }
+                updateSimulation();
+            }
+
+            function updateSimulation() {
+                simulation.force("link").distance(d => 100 * lengthFactor);
+                simulation.alpha(1).restart();
+            }
+
+            setInterval(anneal, 50);  // Adjust interval as needed
+
+            simulation.nodes(data.nodes);
+            simulation.force("link").links(data.links);
+        }
+    </script>
+</body>
+</html>
