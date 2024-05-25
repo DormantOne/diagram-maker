@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>JSON Builder for Force-Directed Graphs</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .form-section {
+            margin-bottom: 20px;
+        }
+        .form-section h3 {
+            margin-bottom: 10px;
+        }
+        .form-section input, .form-section textarea, .form-section select {
+            margin-bottom: 10px;
+            display: block;
+            width: 100%;
+        }
+        .form-section button {
+            display: inline-block;
+            margin-top: 10px;
+        }
+        .node-item, .link-item, .gravity-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>JSON Builder for Force-Directed Graphs</h1>
+
+    <div class="form-section" id="nodes-section">
+        <h3>Nodes</h3>
+        <label for="node-id">Node ID:</label>
+        <input type="text" id="node-id">
+        <label for="node-description">Node Description:</label>
+        <textarea id="node-description"></textarea>
+        <button onclick="addNode()">Add Node</button>
+        <ul id="nodes-list"></ul>
+    </div>
+
+    <div class="form-section" id="links-section">
+        <h3>Links</h3>
+        <label for="link-source">Source Node ID:</label>
+        <select id="link-source"></select>
+        <label for="link-target">Target Node ID:</label>
+        <select id="link-target"></select>
+        <label for="link-process">Process:</label>
+        <input type="text" id="link-process">
+        <button onclick="addLink()">Add Link</button>
+        <ul id="links-list"></ul>
+    </div>
+
+    <div class="form-section" id="gravity-section">
+        <h3>Gravity Relationships</h3>
+        <label for="gravity-node">Node ID:</label>
+        <select id="gravity-node"></select>
+        <label for="gravity-related-node">Related Node ID:</label>
+        <select id="gravity-related-node"></select>
+        <label for="gravity-strength">Strength (Whole Numbers):</label>
+        <input type="number" id="gravity-strength" min="1" step="1">
+        <button onclick="addGravity()">Add Gravity</button>
+        <ul id="gravity-list"></ul>
+    </div>
+
+    <div class="form-section">
+        <h3>JSON Output</h3>
+        <button onclick="generateJSON()">Generate JSON</button>
+        <textarea id="json-output" rows="10"></textarea>
+    </div>
+
+    <script>
+        let nodes = [];
+        let links = [];
+        let gravity = {};
+
+        function updateSelectOptions() {
+            const linkSourceSelect = document.getElementById('link-source');
+            const linkTargetSelect = document.getElementById('link-target');
+            const gravityNodeSelect = document.getElementById('gravity-node');
+            const gravityRelatedNodeSelect = document.getElementById('gravity-related-node');
+            
+            linkSourceSelect.innerHTML = '';
+            linkTargetSelect.innerHTML = '';
+            gravityNodeSelect.innerHTML = '';
+            gravityRelatedNodeSelect.innerHTML = '';
+
+            nodes.forEach(node => {
+                const option = document.createElement('option');
+                option.value = node.id;
+                option.textContent = node.id;
+                
+                linkSourceSelect.appendChild(option.cloneNode(true));
+                linkTargetSelect.appendChild(option.cloneNode(true));
+                gravityNodeSelect.appendChild(option.cloneNode(true));
+                gravityRelatedNodeSelect.appendChild(option.cloneNode(true));
+            });
+        }
+
+        function addNode() {
+            const id = document.getElementById('node-id').value;
+            const description = document.getElementById('node-description').value;
+            if (id && description) {
+                nodes.push({ id, description });
+                const listItem = document.createElement('li');
+                listItem.className = 'node-item';
+                listItem.textContent = `ID: ${id}, Description: ${description}`;
+                const deleteButton = document.createElement('button');
+                deleteButton.textContent = 'Delete';
+                deleteButton.onclick = () => {
+                    nodes = nodes.filter(node => node.id !== id);
+                    updateSelectOptions();
+                    listItem.remove();
+                };
+                listItem.appendChild(deleteButton);
+                document.getElementById('nodes-list').appendChild(listItem);
+                document.getElementById('node-id').value = '';
+                document.getElementById('node-description').value = '';
+                updateSelectOptions();
+            }
+        }
+
+        function addLink() {
+            const source = document.getElementById('link-source').value;
+            const target = document.getElementById('link-target').value;
+            const process = document.getElementById('link-process').value;
+            if (source && target && process) {
+                links.push({ source, target, process });
+                const listItem = document.createElement('li');
+                listItem.className = 'link-item';
+                listItem.textContent = `Source: ${source}, Target: ${target}, Process: ${process}`;
+                const deleteButton = document.createElement('button');
+                deleteButton.textContent = 'Delete';
+                deleteButton.onclick = () => {
+                    links = links.filter(link => !(link.source === source && link.target === target));
+                    listItem.remove();
+                };
+                listItem.appendChild(deleteButton);
+                document.getElementById('links-list').appendChild(listItem);
+                document.getElementById('link-source').value = '';
+                document.getElementById('link-target').value = '';
+                document.getElementById('link-process').value = '';
+            }
+        }
+
+        function addGravity() {
+            const node = document.getElementById('gravity-node').value;
+            const relatedNode = document.getElementById('gravity-related-node').value;
+            const strength = document.getElementById('gravity-strength').value;
+            if (node && relatedNode && strength) {
+                if (!gravity[node]) {
+                    gravity[node] = {};
+                }
+                gravity[node][relatedNode] = parseInt(strength);
+                const listItem = document.createElement('li');
+                listItem.className = 'gravity-item';
+                listItem.textContent = `Node: ${node}, Related Node: ${relatedNode}, Strength: ${strength}`;
+                const deleteButton = document.createElement('button');
+                deleteButton.textContent = 'Delete';
+                deleteButton.onclick = () => {
+                    delete gravity[node][relatedNode];
+                    if (Object.keys(gravity[node]).length === 0) {
+                        delete gravity[node];
+                    }
+                    listItem.remove();
+                };
+                listItem.appendChild(deleteButton);
+                document.getElementById('gravity-list').appendChild(listItem);
+                document.getElementById('gravity-node').value = '';
+                document.getElementById('gravity-related-node').value = '';
+                document.getElementById('gravity-strength').value = '';
+            }
+        }
+
+        function generateJSON() {
+            const data = {
+                nodes,
+                links,
+                gravity
+            };
+            document.getElementById('json-output').value = JSON.stringify(data, null, 2);
+        }
+    </script>
+</body>
+</html>
